@@ -1,0 +1,42 @@
+{
+  "name": "debugirl-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "bin": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "pkg ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inu1255/debugirl-server.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/inu1255/debugirl-server/issues"
+  },
+  "homepage": "https://github.com/inu1255/debugirl-server#readme",
+  "pkg": {
+    "scripts": "build/**/*.js",
+    "assets": [
+      "node_modules/ffi-napi/build/Release/ffi_bindings.node",
+      "node_modules/ref-napi/prebuilds/win32-x64/node.napi.node"
+    ],
+    "targets": [
+      "node16-win32-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "dependencies": {
+    "comment-json": "^4.2.3",
+    "ffi-napi": "^4.0.3",
+    "iconv-lite": "^0.6.3",
+    "ws": "^8.8.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.260",
+    "eslint": "^8.56.0"
+  }
+}
