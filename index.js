@@ -1,11 +1,28 @@
 const {WebSocketServer} = require("ws");
 const config = require("./common/config");
 const {proxyChrome, waitComplete} = require("./common/helper");
-const {sleep} = require("./common/utils");
+const {sleep, datetime, formatError, encodeQuery} = require("./common/utils");
 const {slide} = require("./captcha");
+const Axios = require("axios").default;
+
+const axios = Axios.create({
+	timeout: 10000,
+});
+axios.interceptors.response.use((res) => {
+	if (res.data.code == 0) return res.data.data;
+	throw res.data;
+});
 
 process.on("unhandledRejection", (err) => {
 	console.error(err);
+});
+["log", "warn", "error"].forEach((x) => {
+	const fn = console[x];
+	console[x] = function () {
+		let args = Array.from(arguments);
+		args.unshift(datetime() + "." + Date.now().toString().slice(-3));
+		fn.apply(console, args);
+	};
 });
 
 let wss = new WebSocketServer({port: 3333});
@@ -18,24 +35,42 @@ wss.on("connection", function connection(ws) {
 	});
 	online = true;
 });
+wss.once("listening", () => {
+	console.log("please connect to ws://localhost:3333?name=xxx to start");
+});
 
 async function main() {
 	if (!config.telphone) throw "请在config.json中配置手机号";
+	let prev_error = "";
 	while (true) {
 		await sleep(1000);
 		if (!online) continue;
-		await start();
+		await start().catch((e) => {
+			let tmp = formatError(e);
+			if (tmp != prev_error) {
+				console.error(e);
+				prev_error = tmp;
+			}
+		});
 	}
 }
 
 main(...process.argv.slice(2))
 	.catch((e) => {
 		console.error(e);
-		process.exit(1);
 	})
-	.finally(() => process.exit(0));
+	.finally(() => {
+		console.log(`按任意键退出...`);
+		process.stdin.resume();
+		process.stdin.on("data", () => {
+			process.exit(0);
+		});
+	});
 
-let code = "8748";
+let sms_send_at = 0; // 发验证码时间
+let slide_at = 0; // 破解时间
+let search_at = 0; // 搜索时间
+let reload_at = Date.now();
 async function start() {
 	let tabs = await chrome.tabs.query({
 		url: "https://buyin.jinritemai.com/dashboard/douke/merch-picking-hall",
@@ -50,11 +85,92 @@ async function start() {
 	}
 	if (tab.status == "unloaded") await chrome.tabs.reload(tab.id);
 	if (tab.status != "complete") await waitComplete(chrome, tab);
+	if (sms_send_at > 0) {
+		console.log("等待验证码...");
+		let code = await axios
+			.get(config.smsList + "&pageSize=1000&create_at>=" + sms_send_at)
+			.then((x) => {
+				for (let item of x.list) {
+					let m = /DK】验证码(\d{4})/.exec(item.content);
+					if (m) {
+						return m[1];
+					}
+				}
+			});
+		if (!code) {
+			if (sms_send_at + 180e3 < Date.now()) {
+				console.log("验证码超时");
+				sms_send_at = 0;
+			}
+			return;
+		}
+		console.log(`获取到验证码: ${code}`);
+		let ret = await chrome.scripting
+			.executeScript({
+				target: {tabId: tab.id},
+				func: function (code) {
+					let list = document.querySelectorAll("#uc-second-verify");
+					let phone = list[list.length - 1];
+					if (!phone) return;
+					list = phone.querySelectorAll("input");
+					let input = list[list.length - 1];
+					if (!input || !input._valueTracker) return;
+					input.value = code;
+					input._valueTracker.setValue("");
+					input.dispatchEvent(new Event("input", {bubbles: true, cancelable: true}));
+					list = phone.querySelectorAll(".uc-ui-verify_sms-input_button");
+					let btn = list[list.length - 1];
+					if (!btn) return;
+					if (!/disabled/.test(btn.className)) {
+						btn.click();
+						let error = phone.querySelector(".uc-ui-verify_error");
+						if (error) return error.innerText;
+						return true;
+					}
+				},
+				args: [code],
+			})
+			.then((x) => x[0].result);
+		console.log(`点击验证`, ret);
+		sms_send_at = 0;
+		return;
+	}
+	let phone = await chrome.scripting
+		.executeScript({
+			target: {tabId: tab.id},
+			func: function (tel) {
+				let list = document.querySelectorAll("#uc-second-verify");
+				let phone = list[list.length - 1];
+				if (!phone) return;
+				let input = phone.querySelector("input");
+				if (!input || !input._valueTracker) return;
+				input.value = tel;
+				input._valueTracker.setValue("");
+				input.dispatchEvent(new Event("input", {bubbles: true, cancelable: true}));
+				let btn = phone.querySelector(".uc-ui-input_right>p");
+				if (!btn) return;
+				if (/重新发送|获取验证码/.test(btn.innerText)) {
+					btn.click();
+					return true;
+				}
+			},
+			args: [config.telphone],
+		})
+		.then((x) => x[0].result);
+	if (phone) {
+		console.log("已经发送验证码, 接收中...");
+		sms_send_at = Date.now();
+		return;
+	}
 	let frames = await chrome.webNavigation.getAllFrames({tabId: tab.id});
 	let frame = frames.find((x) =>
 		x.url.startsWith("https://rmc.bytedance.com/verifycenter/captcha/v2")
 	);
 	if (frame) {
+		if (slide_at + 15e3 < Date.now()) {
+			console.log("滑块太频繁");
+			return;
+		}
 		console.log("有滑块");
 		let frame_point = await chrome.scripting
 			.executeScript({
@@ -84,66 +200,48 @@ async function start() {
 			return;
 		}
 		console.log("尝试破解", ret);
+		// if (!tab.active) await chrome.tabs.update(tab.id, {active: true});
 		let x = Math.floor(frame_point.x + ret.x);
 		let y = Math.floor(frame_point.y + ret.y);
 		let dx = Math.floor(ret.dx);
+		slide_at = Date.now();
 		await slide({x, y, dx});
 		return;
 	}
-	if (code) {
-		let ret = await chrome.scripting
-			.executeScript({
-				target: {tabId: tab.id},
-				func: function (code) {
-					let list = document.querySelectorAll("#uc-second-verify");
-					let phone = list[list.length - 1];
-					if (!phone) return;
-					list = phone.querySelectorAll("input");
-					let input = list[list.length - 1];
-					if (!input || !input._valueTracker) return;
-					input.value = code;
-					input._valueTracker.setValue("");
-					input.dispatchEvent(new Event("input", {bubbles: true, cancelable: true}));
-					list = phone.querySelectorAll(".uc-ui-verify_sms-input_button");
-					let btn = list[list.length - 1];
-					if (!btn) return;
-					if (!/disabled/.test(btn.className)) {
-						btn.click();
-						let error = phone.querySelector(".uc-ui-verify_error");
-						if (error) return error.innerText;
-						return true;
-					}
-				},
-				args: [code],
-			})
-			.then((x) => x[0].result);
-		console.log(ret);
-		code = "";
-		return;
+	if (reload_at + 3600e3 < Date.now()) {
+		console.log("页面很久没刷新了,刷新一次...");
+		reload_at = Date.now();
+		await chrome.tabs.reload(tab.id);
 	}
-	let phone = await chrome.scripting
-		.executeScript({
+	if (search_at + 10e3 < Date.now()) {
+		search_at = Date.now();
+		let title = "手机";
+		let pgNo = 1;
+		let url =
+			"https://buyin.jinritemai.com/pc/selection/search/pmt?" +
+			encodeQuery({
+				page_type: "0",
+				page: pgNo,
+				page_size: "20",
+				rec_page: pgNo,
+				rec_page_size: "20",
+				search_text: title,
+				category_ids_v2: "",
+				search_id: "",
+				input_query: title,
+				is_product_distribution: "false",
+				is_delivery_guarantee: "false",
+				is_ladder_cos: "false",
+				is_wu_you: "false",
+			});
+		await chrome.scripting.executeScript({
 			target: {tabId: tab.id},
-			func: function (tel, code) {
-				let list = document.querySelectorAll("#uc-second-verify");
-				let phone = list[list.length - 1];
-				if (!phone) return;
-				let input = phone.querySelector("input");
-				if (!input || !input._valueTracker) return;
-				input.value = tel;
-				input._valueTracker.setValue("");
-				input.dispatchEvent(new Event("input", {bubbles: true, cancelable: true}));
-				let btn = phone.querySelector(".uc-ui-input_right>p");
-				if (!btn) return;
-				if (/重新发送|获取验证码/.test(btn.innerText)) {
-					btn.click();
-					return true;
-				}
+			func: function (url) {
+				return fetch(url).then((x) => x.json());
 			},
-			args: ["18782071219"],
-		})
-		.then((x) => x[0].result);
-	console.log("phone", phone);
+			args: [url],
+		});
+	}
 }
 
 async function crackSlide(tab, frame) {

@@ -22,13 +22,13 @@ try {
 		console.error("读取配置文件错误", err);
 		process.exit(1);
 	}
-	try {
-		let text = stringify(config, null, 2);
-		fs.writeFileSync("config.json", text);
-	} catch (err) {
-		console.error("配置生成失败", err);
-		process.exit(1);
-	}
+}
+try {
+	let text = stringify(config, null, 2);
+	fs.writeFileSync("config.json", text);
+} catch (err) {
+	console.error("配置生成失败", err);
+	process.exit(1);
 }
 
 module.exports = config;
