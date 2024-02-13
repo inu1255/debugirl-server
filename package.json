@@ -40,5 +40,11 @@
   "devDependencies": {
     "@types/chrome": "^0.0.260",
     "eslint": "^8.56.0"
+  },
+  "opencv4nodejs": {
+    "disableAutoBuild": 1,
+    "opencvIncludeDir": "D:\\opt\\opencv\\build\\4.8.0_X86\\install\\include",
+    "opencvLibDir": "D:\\opt\\opencv\\build\\4.8.0_X86\\install\\x64\\vc17\\lib",
+    "opencvBinDir": "D:\\opt\\opencv\\build\\4.8.0_X86\\install\\x64\\vc17\\bin"
   }
 }

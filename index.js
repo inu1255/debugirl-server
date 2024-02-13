@@ -37,7 +37,7 @@ function catchError(fn) {
 		return fn().catch((e) => {
 			let tmp = formatError(e);
 			if (tmp != prev_error) {
-				console.error(e);
+				console.error("error", e instanceof Buffer ? e.toString() : e);
 				prev_error = tmp;
 			}
 		});
@@ -45,7 +45,7 @@ function catchError(fn) {
 }
 
 const tasks = [
-	// douyin, // 抖音
+	douyin, // 抖音
 	taobao, // 淘宝
 ].map((x) => catchError(x));
 

@@ -2,5 +2,9 @@
 	// 抖客绑定手机号
 	"telphone": "",
 	// 短信查询接口
-	"smsList": ""
+	"smsList": "",
+	// 淘宝账号
+	"taobaoAccount": "",
+	// 淘宝密码
+	"taobaoPassword": "",
 }
