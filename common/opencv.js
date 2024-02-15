@@ -1,7 +1,6 @@
 const cv = require("opencv4nodejs");
 
 async function slideDx(back, slide) {
-	console.log({back, slide});
 	let origin = await cv.imdecodeAsync(back);
 	// await cv.imwriteAsync("dist/origin.png", origin);
 	let image = origin.bgrToGray();
