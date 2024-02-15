@@ -60,7 +60,9 @@ exports.slide = slide;
 
 if (require.main === module) {
 	async function main() {
-		await slide({x: 300, y: 200, dx: 20});
+		await sleep(10e3);
+		console.log(123);
+		await slide({title: "淘宝联盟·生态伙伴", x: 300, y: 200, dx: 0});
 	}
 
 	main().catch(console.error);

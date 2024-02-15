@@ -13,7 +13,6 @@ async function slideDx(back, slide) {
 
 	const matched = image.matchTemplate(template, 5);
 	const minMax = matched.minMaxLoc();
-	console.log(minMax.maxVal, minMax.maxLoc.x, minMax.maxLoc.y);
 
 	return minMax.maxLoc.x;
 }

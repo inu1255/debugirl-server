@@ -50,8 +50,7 @@ const tasks = [
 ].map((x) => catchError(x));
 
 async function main() {
-	if (!config.telphone) throw "请在config.json中配置手机号";
-	while (config.telphone) {
+	while (config) {
 		await sleep(1000);
 		if (!online) continue;
 		for (let fn of tasks) {
